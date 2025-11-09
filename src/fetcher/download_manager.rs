@@ -439,13 +439,10 @@ impl DownloadManager {
                 // Update status
                 {
                     let mut statuses = statuses_clone.lock().await;
-                    statuses.insert(
-                        task.id,
-                        DownloadStatus::Downloading {
-                            downloaded_bytes: 0,
-                            total_bytes: 0,
-                        },
-                    );
+                    statuses.insert(task.id, DownloadStatus::Downloading {
+                        downloaded_bytes: 0,
+                        total_bytes: 0,
+                    });
                 }
 
                 // Create a fetcher for this task
@@ -461,14 +458,13 @@ impl DownloadManager {
                 if let Some(callback) = task.progress_callback {
                     fetcher = fetcher.with_progress_callback(move |downloaded, total| {
                         // Update status with progress
-                        let mut statuses = statuses_for_callback.blocking_lock();
-                        statuses.insert(
-                            task_id,
-                            DownloadStatus::Downloading {
+                        tokio::task::block_in_place(|| {
+                            let mut statuses = statuses_for_callback.blocking_lock();
+                            statuses.insert(task_id, DownloadStatus::Downloading {
                                 downloaded_bytes: downloaded,
                                 total_bytes: total,
-                            },
-                        );
+                            });
+                        });
 
                         // Call the original callback
                         callback(downloaded, total);
@@ -477,14 +473,13 @@ impl DownloadManager {
                     // Default callback that just updates the status
                     let statuses_for_callback = statuses_clone.clone();
                     fetcher = fetcher.with_progress_callback(move |downloaded, total| {
-                        let mut statuses = statuses_for_callback.blocking_lock();
-                        statuses.insert(
-                            task_id,
-                            DownloadStatus::Downloading {
+                        tokio::task::block_in_place(|| {
+                            let mut statuses = statuses_for_callback.blocking_lock();
+                            statuses.insert(task_id, DownloadStatus::Downloading {
                                 downloaded_bytes: downloaded,
                                 total_bytes: total,
-                            },
-                        );
+                            });
+                        });
                     });
                 }
 
@@ -507,12 +502,9 @@ impl DownloadManager {
                             statuses.insert(task_id, DownloadStatus::Completed);
                         }
                         Err(e) => {
-                            statuses.insert(
-                                task_id,
-                                DownloadStatus::Failed {
-                                    reason: e.to_string(),
-                                },
-                            );
+                            statuses.insert(task_id, DownloadStatus::Failed {
+                                reason: e.to_string(),
+                            });
                         }
                     }
 
