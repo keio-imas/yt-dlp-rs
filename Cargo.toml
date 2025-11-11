@@ -68,3 +68,4 @@ xz2 = "0.1.7"
 # Logging dependencies
 tracing = { version = "0.1.40", optional = true }
 cfg-if = "1.0.0"
+walkdir = "2.5.0"
