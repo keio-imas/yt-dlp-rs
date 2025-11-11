@@ -6,6 +6,7 @@ use crate::utils::file_system;
 use crate::utils::platform::{Architecture, Platform};
 use std::fmt;
 use std::path::{Path, PathBuf};
+use walkdir;
 
 /// URL templates for FFmpeg builds based on platform and architecture
 #[derive(Debug, Clone)]
@@ -202,11 +203,33 @@ impl BuildFetcher {
         architecture: &Architecture,
     ) -> Option<Extraction> {
         match (platform, architecture) {
-            (Platform::Windows, _) => Some(Extraction {
-                executable_path: PathBuf::from("ffmpeg-7.1.1-essentials_build/bin/ffmpeg.exe"),
-                extracted_dir: None,
-                binary_extension: "exe".to_string(),
-            }),
+            (Platform::Windows, _) => {
+                let base = PathBuf::from("libs");
+                let mut found_path: Option<PathBuf> = walkdir::WalkDir::new(&base)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .map(|e| e.into_path())
+                    .find(|p| {
+                        let file_ok = p.file_name().is_some_and(|n| n == "ffmpeg.exe");
+                        let parent_ok = p
+                            .parent()
+                            .and_then(|pp| pp.file_name())
+                            .is_some_and(|n| n == "bin");
+                        file_ok && parent_ok
+                    });
+                let executable_path = found_path.take().unwrap_or_else(|| {
+                    base.join("ffmpetch-7.1.1-essentials_build/")
+                        .join("bin")
+                        .join("ffmpeg.exe")
+                });
+
+                // test
+                Some(Extraction {
+                    executable_path,
+                    extracted_dir: None,
+                    binary_extension: "exe".to_string(),
+                })
+            }
 
             (Platform::Mac, _) => Some(Extraction {
                 executable_path: PathBuf::from("ffmpeg"),
