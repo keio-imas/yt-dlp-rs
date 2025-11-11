@@ -203,33 +203,11 @@ impl BuildFetcher {
         architecture: &Architecture,
     ) -> Option<Extraction> {
         match (platform, architecture) {
-            (Platform::Windows, _) => {
-                let base = PathBuf::from("libs");
-                let mut found_path: Option<PathBuf> = walkdir::WalkDir::new(&base)
-                    .into_iter()
-                    .filter_map(|e| e.ok())
-                    .map(|e| e.into_path())
-                    .find(|p| {
-                        let file_ok = p.file_name().is_some_and(|n| n == "ffmpeg.exe");
-                        let parent_ok = p
-                            .parent()
-                            .and_then(|pp| pp.file_name())
-                            .is_some_and(|n| n == "bin");
-                        file_ok && parent_ok
-                    });
-                let executable_path = found_path.take().unwrap_or_else(|| {
-                    base.join("ffmpetch-7.1.1-essentials_build/")
-                        .join("bin")
-                        .join("ffmpeg.exe")
-                });
-
-                // test
-                Some(Extraction {
-                    executable_path,
-                    extracted_dir: None,
-                    binary_extension: "exe".to_string(),
-                })
-            }
+            (Platform::Windows, _) => Some(Extraction {
+                executable_path: PathBuf::from("ffmpeg.exe"),
+                extracted_dir: None,
+                binary_extension: "exe".to_string(),
+            }),
 
             (Platform::Mac, _) => Some(Extraction {
                 executable_path: PathBuf::from("ffmpeg"),
@@ -349,16 +327,40 @@ impl BuildFetcher {
         );
         let binary = parent.join(binary_name);
 
-        // Find the executable path
         let executable = if let Some(extracted_dir) = extraction_info.extracted_dir {
             destination
                 .join(extracted_dir)
-                .join(extraction_info.executable_path)
+                .join(extraction_info.executable_path.clone())
         } else {
-            destination.join(extraction_info.executable_path)
+            walkdir::WalkDir::new(&destination)
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .map(|e| e.into_path())
+                .find(|p| {
+                    let file_ok = p
+                        .file_name()
+                        .is_some_and(|n| n == extraction_info.executable_path);
+
+                    let parent_ok = p
+                        .parent()
+                        .and_then(|pp| pp.file_name())
+                        .is_some_and(|n| n == "bin");
+
+                    file_ok && parent_ok
+                })
+                .ok_or_else(|| {
+                    Error::IO(std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        format!(
+                            "Could not find ffmpeg executable {:?} in extracted files",
+                            extraction_info.executable_path
+                        ),
+                    ))
+                })?
         };
 
         // Copy the executable to the final location
+        println!("Copying ffmpeg from {:?} to {:?}", executable, binary);
         tokio::fs::copy(executable, binary.clone()).await?;
 
         // Clean up
