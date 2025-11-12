@@ -485,7 +485,17 @@ impl Youtube {
             .ok_or(Error::Path("Invalid output path".to_string()))?;
 
         let args = vec![
-            "-i", audio, "-i", video, "-c:v", "copy", "-c:a", "aac", output,
+            "-i",
+            audio,
+            "-i",
+            video,
+            "-c:v",
+            "copy",
+            "-c:a",
+            "copy",
+            "-movflags",
+            "+faststart",
+            output,
         ];
 
         let executor = Executor {
@@ -580,6 +590,69 @@ impl Youtube {
         }
 
         None
+    }
+
+    /// normalize video
+    /// Windows cannot play fmp4/dash format MP4 files properly. Therefore, they must be converted appropriately.
+    pub async fn normalize_video(&self, video_path: impl AsRef<Path>) -> Result<&Self> {
+        // overwrite the original file
+        let video = video_path
+            .as_ref()
+            .to_str()
+            .ok_or(Error::Path("Invalid video path".to_string()))?;
+
+        let stem = video_path
+            .as_ref()
+            .file_stem()
+            .ok_or(Error::Path("Invalid video path".to_string()))?;
+        let extension = video_path
+            .as_ref()
+            .extension()
+            .ok_or(Error::Path("Invalid video path".to_string()))?;
+
+        let mut new_stem = std::ffi::OsString::from(stem);
+        new_stem.push("_temp");
+
+        let temp_output_path = video_path
+            .as_ref()
+            .with_file_name(new_stem)
+            .with_extension(extension);
+
+        let temp_output_path_str = temp_output_path
+            .to_str()
+            .ok_or(Error::Path("Invalid temp output path".to_string()))?;
+
+        let args = vec![
+            "-fflags",
+            "+genpts",
+            "-i",
+            video,
+            "-map",
+            "0:v:0",
+            "-c:v",
+            "copy",
+            "-an",
+            "-movflags",
+            "+faststart",
+            "-brand",
+            "-isom",
+            "-y",
+            temp_output_path_str,
+        ];
+
+        let executor = Executor {
+            executable_path: self.libraries.ffmpeg.clone(),
+            timeout: self.timeout,
+            args: utils::to_owned(args),
+        };
+
+        executor.execute().await?;
+
+        // Replace the original file with the normalized file_stem
+        std::fs::remove_file(video_path.as_ref())?;
+        std::fs::rename(temp_output_path, video_path.as_ref())?;
+
+        Ok(self)
     }
 
     /// Enables caching of video metadata.
