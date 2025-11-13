@@ -337,16 +337,12 @@ impl BuildFetcher {
                 .filter_map(|e| e.ok())
                 .map(|e| e.into_path())
                 .find(|p| {
+                    println!("Checking path: {:?}", p);
                     let file_ok = p
                         .file_name()
                         .is_some_and(|n| n == extraction_info.executable_path);
 
-                    let parent_ok = p
-                        .parent()
-                        .and_then(|pp| pp.file_name())
-                        .is_some_and(|n| n == "bin");
-
-                    file_ok && parent_ok
+                    file_ok
                 })
                 .ok_or_else(|| {
                     Error::IO(std::io::Error::new(
