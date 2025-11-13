@@ -485,17 +485,7 @@ impl Youtube {
             .ok_or(Error::Path("Invalid output path".to_string()))?;
 
         let args = vec![
-            "-i",
-            audio,
-            "-i",
-            video,
-            "-c:v",
-            "copy",
-            "-c:a",
-            "copy",
-            "-movflags",
-            "+faststart",
-            output,
+            "-i", audio, "-i", video, "-c:v", "copy", "-c:a", "aac", output,
         ];
 
         let executor = Executor {
