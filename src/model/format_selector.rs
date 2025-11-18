@@ -38,6 +38,19 @@ pub enum AudioQuality {
     CustomBitrate(u32),
 }
 
+impl AudioQuality {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            AudioQuality::Best => "320k",
+            AudioQuality::High => "256k",
+            AudioQuality::Medium => "128k",
+            AudioQuality::Low => "96k",
+            AudioQuality::Worst => "64k",
+            AudioQuality::CustomBitrate(rate) => format!("{}k", rate).leak(),
+        }
+    }
+}
+
 /// Represents codec preferences for video format selection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VideoCodecPreference {
@@ -66,6 +79,18 @@ pub enum AudioCodecPreference {
     Custom(String),
     /// No specific codec preference
     Any,
+}
+
+impl AudioCodecPreference {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            AudioCodecPreference::Opus => "opus",
+            AudioCodecPreference::AAC => "aac",
+            AudioCodecPreference::MP3 => "mp3",
+            AudioCodecPreference::Custom(_) => "custom",
+            AudioCodecPreference::Any => "any",
+        }
+    }
 }
 
 /// Helper function to check if a video codec matches the preference

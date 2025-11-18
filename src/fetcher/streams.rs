@@ -69,6 +69,7 @@ impl Youtube {
         };
 
         let output = executor.execute().await?;
+        // println!("yt-dlp output: {}", output.stdout);
         let mut video: Video = serde_json::from_str(&output.stdout).map_err(Error::Serde)?;
 
         // Set the video ID on each format for caching purposes
@@ -471,14 +472,38 @@ impl Youtube {
         // Post-process the audio file with ffmpeg to ensure compatibility with players
         let output_path = self.output_dir.join(output_str);
 
+        // configure ffmpeg arguments: *.aac -> AAC, *.mp3 -> MP3, ..
+
+        let target_codec = output_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| {
+                println!("Target audio extension: {}", extension);
+                match extension.to_lowercase().as_str() {
+                    "mp3" => ("libmp3lame", "192k"), // TODO: remove hardcoded bitrate
+                    "aac" => ("aac", "192k"),
+                    _ => ("aac", "192k"), // default to AAC 192k
+                }
+            })
+            .unwrap_or(("aac", "192k")); // fallback to AAC 192k (default)
+
         let temp = temp_path
             .to_str()
-            .ok_or(Error::Path("Invalid temp path".to_string()))?;
-        let output_str_path = output_path
-            .to_str()
-            .ok_or(Error::Path("Invalid output path".to_string()))?;
+            .ok_or(Error::Path("Invalid Temporary Path".to_string()))?;
 
-        let args = vec!["-i", temp, "-c:a", "aac", "-b:a", "192k", output_str_path];
+        let output_string_path = output_path
+            .to_str()
+            .ok_or(Error::Path("Invalid Output Path".to_string()))?;
+
+        let args = vec![
+            "-i",
+            temp,
+            "-c:a",
+            target_codec.0,
+            "-b:a",
+            target_codec.1,
+            output_string_path,
+        ];
 
         let executor = Executor {
             executable_path: self.libraries.ffmpeg.clone(),

@@ -145,7 +145,7 @@ impl Youtube {
             libraries,
             output_dir: output_dir.as_ref().to_path_buf(),
             args: Vec::new(),
-            timeout: Duration::from_secs(30),
+            timeout: Duration::from_secs(90),
             #[cfg(feature = "cache")]
             cache: Some(Arc::new(cache)),
             #[cfg(feature = "cache")]
@@ -190,7 +190,7 @@ impl Youtube {
             libraries,
             output_dir: output_dir.as_ref().to_path_buf(),
             args: Vec::new(),
-            timeout: Duration::from_secs(30),
+            timeout: Duration::from_secs(90),
             #[cfg(feature = "cache")]
             cache: Some(Arc::new(cache)),
             #[cfg(feature = "cache")]
@@ -1102,6 +1102,68 @@ impl Youtube {
         }
     }
 
+    pub async fn download_video_stream_with_quality_and_callback<CallbackFunction>(
+        &self,
+        url: impl AsRef<str> + std::fmt::Debug + Display,
+        output: impl AsRef<str> + std::fmt::Debug + Display,
+        quality: model::format_selector::VideoQuality,
+        codec: model::format_selector::VideoCodecPreference,
+        progress_callback: CallbackFunction,
+    ) -> Result<PathBuf>
+    where
+        CallbackFunction: Fn(u64, u64) + Send + Sync + 'static,
+    {
+        // make default variables
+        let video = self.fetch_video_infos(url.to_string()).await?;
+        let output_str = output.as_ref();
+        let output_path = self.output_dir.join(output_str);
+
+        let video_format = video
+            .select_video_format(quality, codec.clone())
+            .ok_or_else(|| Error::MissingFormat("video".to_string()))?;
+
+        let source_url = video_format
+            .download_info
+            .url
+            .clone()
+            .ok_or_else(|| Error::MissingUrl(video_format.format_id.clone()))?;
+
+        let download_id = self
+            .download_manager
+            .enqueue_with_progress(
+                &source_url,
+                &output_path,
+                Some(fetcher::download_manager::DownloadPriority::Normal),
+                progress_callback,
+            )
+            .await;
+
+        self.wait_for_download(download_id).await;
+
+        // cache the downloaded file
+        #[cfg(feature = "cache")]
+        if let Some(download_cache) = &self.download_cache {
+            if let Err(_e) = download_cache
+                .put_file_with_preferences(
+                    &output_path,
+                    output_str,
+                    Some(video.id.clone()),
+                    Some(video_format),
+                    Some(quality),
+                    None,
+                    Some(codec),
+                    None,
+                )
+                .await
+            {
+                #[cfg(feature = "tracing")]
+                tracing::warn!("Failed to cache downloaded video file: {}", _e);
+            }
+        }
+
+        Ok(output_path)
+    }
+
     /// Downloads an audio stream with the specified quality preferences.
     ///
     /// # Arguments
@@ -1173,5 +1235,139 @@ impl Youtube {
                     .await
             }
         }
+    }
+
+    // TODO: clean this
+    pub async fn download_audio_stream_with_quality_and_callback<CallbackFunction>(
+        &self,
+        url: impl AsRef<str> + std::fmt::Debug + Display,
+        output: impl AsRef<str> + std::fmt::Debug + Display,
+        quality: model::format_selector::AudioQuality,
+        codec: model::format_selector::AudioCodecPreference,
+        progress_callback: CallbackFunction,
+    ) -> Result<PathBuf>
+    where
+        CallbackFunction: Fn(u64, u64) + Send + Sync + 'static,
+    {
+        // make default variables
+        let video = self.fetch_video_infos(url.to_string()).await?;
+        let output_str = output.as_ref();
+        let output_path = self.output_dir.join(output_str);
+
+        let audio_format = video
+            .select_audio_format(
+                model::format_selector::AudioQuality::Best,
+                model::format_selector::AudioCodecPreference::AAC,
+            )
+            .ok_or_else(|| Error::MissingFormat("audio".to_string()))?;
+
+        let source_extension = "webm";
+
+        let temporary_output = format!(
+            "temp_{}_{}.{}",
+            video.id,
+            utils::file_system::random_filename(8),
+            source_extension
+        );
+        let temporary_path = self.output_dir.join(&temporary_output);
+
+        let source_url = audio_format
+            .download_info
+            .url
+            .clone()
+            .ok_or_else(|| Error::MissingUrl(audio_format.format_id.clone()))?;
+
+        let download_id = self
+            .download_manager
+            .enqueue_with_progress(
+                &source_url,
+                self.output_dir.join(&temporary_output),
+                Some(fetcher::download_manager::DownloadPriority::Normal),
+                progress_callback,
+            )
+            .await;
+
+        self.wait_for_download(download_id).await;
+
+        // determine target codec
+        let target_codec_encoder = output_path
+            .extension()
+            .and_then(|extension| match extension.to_str() {
+                Some("mp3") => Some("libmp3lame"),
+                Some("aac") => Some("aac"),
+                Some("m4a") => Some("aac"),
+                Some("opus") => Some("libopus"),
+                Some("wav") => Some("pcm_s16le"),
+                _ => None,
+            })
+            .ok_or_else(|| {
+                Error::MissingFormat(format!(
+                    "Unsupported audio codec for extension: {:?}",
+                    output_path.extension()
+                ))
+            })?;
+
+        let temporary_path_str = temporary_path
+            .to_str()
+            .ok_or(Error::Path("Invalid temporary path".to_string()))?;
+
+        let output_path_str = &output_path
+            .to_str()
+            .ok_or(Error::Path("Invalid output path".to_string()))?;
+
+        let args = vec![
+            "-y",
+            "-i",
+            temporary_path_str,
+            "-c:a",
+            target_codec_encoder,
+            "-b:a",
+            quality.to_str(),
+            output_path_str,
+        ];
+
+        let executor = Executor {
+            executable_path: self.libraries.ffmpeg.clone(),
+            timeout: self.timeout,
+            args: utils::to_owned(args),
+        };
+        executor.execute().await?;
+
+        // clean up temporary file
+        let _ = utils::file_system::remove_temp_file(temporary_path).await;
+
+        // add metadata
+        crate::metadata::MetadataManager::add_metadata_with_format(
+            &output_path,
+            &video,
+            None,
+            Some(&audio_format),
+        )
+        .await?;
+
+        #[cfg(feature = "cache")]
+        if let Some(download_cache) = &self.download_cache {
+            #[cfg(feature = "tracing")]
+            tracing::debug!("Caching downloaded audio file");
+
+            if let Err(_e) = download_cache
+                .put_file_with_preferences(
+                    &output_path,
+                    output_str,
+                    Some(video.id.clone()),
+                    Some(audio_format),
+                    None,
+                    Some(quality),
+                    None,
+                    Some(codec),
+                )
+                .await
+            {
+                #[cfg(feature = "tracing")]
+                tracing::warn!("Failed to cache downloaded audio file: {}", _e);
+            }
+        }
+
+        Ok(output_path)
     }
 }
