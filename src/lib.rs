@@ -1449,6 +1449,31 @@ impl Youtube {
         }
     }
 
+    async fn wait_for_download_or_error(
+        &self,
+        download_id: u64,
+        expected_path: &Path,
+    ) -> Result<()> {
+        let status = self.wait_for_download(download_id).await;
+
+        let Some(status) = status else {
+            return Err(Error::Unknown(format!(
+                "download_id {} not found",
+                download_id
+            )));
+        };
+
+        if !expected_path.exists() {
+            return Err(Error::Unknown(format!(
+                "download completed but output file does not exist: {} (status: {:?})",
+                expected_path.display(),
+                status
+            )));
+        }
+
+        Ok(())
+    }
+
     // TODO: clean this
     pub async fn download_audio_stream_with_quality_and_callback<CallbackFunction>(
         &self,
@@ -1501,13 +1526,15 @@ impl Youtube {
             .download_manager
             .enqueue_with_progress(
                 &source_url,
-                self.output_dir.join(&temporary_output),
+                temporary_path.clone(),
                 Some(crate::download::manager::DownloadPriority::Normal),
                 progress_callback,
             )
             .await;
 
-        self.wait_for_download(download_id).await;
+        // self.wait_for_download(download_id).await;
+        self.wait_for_download_or_error(download_id, &temporary_path)
+            .await?;
 
         // determine target codec
         let target_codec_encoder = output_path
@@ -1546,12 +1573,31 @@ impl Youtube {
             output_path_str,
         ];
 
+        if !temporary_path.exists() {
+            return Err(Error::PathValidation {
+                path: temporary_path.clone(),
+                reason: format!(
+                    "Temporary audio file does not exist: {}",
+                    temporary_path.display()
+                ),
+            });
+        }
         let executor = Executor {
             executable_path: self.libraries.ffmpeg.clone(),
             timeout: self.timeout,
             args: utils::to_owned(args),
         };
         executor.execute().await?;
+
+        if !output_path.exists() {
+            return Err(Error::PathValidation {
+                path: output_path.clone(),
+                reason: format!(
+                    "Output audio file was not created: {}",
+                    output_path.display()
+                ),
+            });
+        }
 
         // clean up temporary file
         let _ = utils::fs::remove_temp_file(temporary_path).await;
