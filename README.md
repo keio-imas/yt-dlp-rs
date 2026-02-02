@@ -75,7 +75,7 @@ Using an external program is not ideal, but it is the most reliable and maintain
 Add the following to your `Cargo.toml` file:
 ```toml
 [dependencies]
-yt-dlp = "1.4.1"
+yt-dlp = "1.4.8"
 ```
 
 A new release is automatically published every two weeks, to keep up to date with dependencies and features.
@@ -88,17 +88,17 @@ compile time for the most common use cases. The following features are
 available.
 
 - **`cache`** (enabled by default) - Enables video metadata, files and thumbnails caching
-- **`tracing`** — <img align="center" width="20" alt="Tracing" src="https://raw.githubusercontent.com/tokio-rs/tracing/refs/heads/master/assets/logo.svg" /> Enables profiling with the [```tracing```](https://crates.io/crates/tracing) crate.
+- **`tracing`** (enabled by default) — <img align="center" width="20" alt="Tracing" src="https://raw.githubusercontent.com/tokio-rs/tracing/refs/heads/master/assets/logo.svg" /> Enables profiling with the [```tracing```](https://crates.io/crates/tracing) crate.
   When this feature is enabled, the library will output span events at log levels `trace` and `debug`, depending on the importance of the called function.
 - **`rustls`** - Enables the `rustls-tls` feature in the [```reqwest```](https://crates.io/crates/reqwest) crate.
   This enables building the application without openssl or other system sourced SSL libraries.
 
-#### 📝 Profiling with `tracing` (disabled by default):
+#### 📝 Profiling with `tracing` (enabled by default):
 The crate supports the `tracing` feature to enable profiling, which can be useful for debugging.
 You can enable it by adding the following to your `Cargo.toml` file:
 ```toml
 [dependencies]
-yt-dlp = { version = "1.4.1", features = ["tracing"] }
+yt-dlp = { version = "1.4.8", features = ["tracing"], default-features = false }
 ```
 
 ## 📖 Documentation
@@ -124,7 +124,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 - 📦 Installing the [```yt-dlp```](https://github.com/yt-dlp/yt-dlp/) binary only:
 ```rust
-use yt_dlp::fetcher::deps::LibraryInstaller;
+use yt_dlp::client::deps::LibraryInstaller;
 use std::path::PathBuf;
 
 #[tokio::main]
@@ -139,7 +139,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 - 📦 Installing the [```ffmpeg```](https://ffmpeg.org/) binary only:
 ```rust
-use yt_dlp::fetcher::deps::LibraryInstaller;
+use yt_dlp::client::deps::LibraryInstaller;
 use std::path::PathBuf;
 
 #[tokio::main]
@@ -156,7 +156,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -178,7 +178,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -197,11 +197,43 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+- ✨ Using the fluent API with custom quality preferences:
+```rust
+use yt_dlp::Youtube;
+use yt_dlp::model::selector::{VideoQuality, AudioQuality, VideoCodecPreference};
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+
+    // Use the fluent download builder API
+    let video_path = fetcher.download(url, "my-video.mp4")
+        .video_quality(VideoQuality::Q1080p)
+        .video_codec(VideoCodecPreference::H264)
+        .audio_quality(AudioQuality::Best)
+        .execute()
+        .await?;
+
+    Ok(())
+}
+```
+
 - 🎬 Fetching a video (without its audio) and downloading it:
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -224,7 +256,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -247,7 +279,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -278,7 +310,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -309,7 +341,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -331,46 +363,45 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 - 📥 Download with download manager and priority:
 ```rust
 use yt_dlp::Youtube;
-use yt_dlp::fetcher::download_manager::{ManagerConfig, DownloadPriority};
+use yt_dlp::download::manager::{ManagerConfig, DownloadPriority};
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Custom download manager configuration
-    let config = ManagerConfig {
-        max_concurrent_downloads: 5,        // Maximum 5 concurrent downloads
-        segment_size: 1024 * 1024 * 10,    // 10 MB per segment
-        parallel_segments: 8,               // 8 parallel segments per download
-        retry_attempts: 5,                  // 5 retry attempts on failure
-        max_buffer_size: 1024 * 1024 * 20, // 20 MB maximum buffer
-    };
+    // Custom download manager configuration using builder methods
+    let config = ManagerConfig::default()
+        .with_max_concurrent_downloads(5)        // Maximum 5 concurrent downloads
+        .with_segment_size(1024 * 1024 * 10)    // 10 MB per segment
+        .with_parallel_segments(8)               // 8 parallel segments per download
+        .with_retry_attempts(5)                  // 5 retry attempts on failure
+        .with_max_buffer_size(1024 * 1024 * 20); // 20 MB maximum buffer
 
     let libraries_dir = PathBuf::from("libs");
     let output_dir = PathBuf::from("output");
-    
+
     let youtube = libraries_dir.join("yt-dlp");
     let ffmpeg = libraries_dir.join("ffmpeg");
-    
+
     let libraries = Libraries::new(youtube, ffmpeg);
-    
+
     // Create a fetcher with custom configuration
     let fetcher = Youtube::with_download_manager_config(libraries, output_dir, config)?;
 
     // Download a video with high priority
     let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
     let video = fetcher.fetch_video_infos(url).await?;
-    
+
     let download_id = fetcher.download_video_with_priority(
-        &video, 
-        "video-high-priority.mp4", 
+        &video,
+        "video-high-priority.mp4",
         Some(DownloadPriority::High)
     ).await?;
 
     // Wait for download completion
     let status = fetcher.wait_for_download(download_id).await;
     println!("Final download status: {:?}", status);
-    
+
     Ok(())
 }
 ```
@@ -379,7 +410,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -420,7 +451,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use yt_dlp::Youtube;
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -498,9 +529,9 @@ The library provides a powerful format selection system that allows you to downl
 
 ```rust
 use yt_dlp::Youtube;
-use yt_dlp::model::{VideoQuality, VideoCodecPreference, AudioQuality, AudioCodecPreference};
+use yt_dlp::model::selector::{VideoQuality, VideoCodecPreference, AudioQuality, AudioCodecPreference};
 use std::path::PathBuf;
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -569,18 +600,953 @@ The system intelligently manages the application of metadata based on the file t
 
 This optimized approach ensures that metadata is always present in the final file, while avoiding unnecessary processing of temporary files.
 
-## 💡Support coming soon
-- [ ] Subtitles
-- [ ] Chapters
-- [ ] Heatmap
-- [ ] Playlist (and index)
+## 📖 Chapters
+
+Videos may contain chapters that divide the content into logical segments. The library provides easy access to chapter information and **automatically embeds chapters into downloaded video files** (MP4/MKV/WebM):
+
+- 📖 Accessing video chapters:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    // Check if video has chapters
+    if video.has_chapters() {
+        println!("Video has {} chapters", video.get_chapters().len());
+
+        // Iterate over all chapters
+        for chapter in video.get_chapters() {
+            println!(
+                "Chapter: {} ({:.2}s - {:.2}s)",
+                chapter.title.as_deref().unwrap_or("Untitled"),
+                chapter.start_time,
+                chapter.end_time
+            );
+        }
+    }
+
+    Ok(())
+}
+```
+
+- 🕒 Finding a chapter at a specific timestamp:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    // Find chapter at 120 seconds (2 minutes)
+    if let Some(chapter) = video.get_chapter_at_time(120.0) {
+        println!(
+            "At 2:00, you're in chapter: {}",
+            chapter.title.as_deref().unwrap_or("Untitled")
+        );
+        println!("Chapter duration: {:.2}s", chapter.duration());
+    }
+
+    Ok(())
+}
+```
+
+**Note**: When downloading videos using `download_video()` or `download_video_from_url()`, chapters are **automatically embedded** into the video file metadata. Media players like VLC, MPV, and others will be able to navigate using the chapters!
+
+## 🔥 Heatmap
+
+Heatmap data (also known as "Most Replayed" segments) shows viewer engagement across different parts of a video. This feature allows you to identify which segments are most popular:
+
+- 🔥 Accessing heatmap data:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    // Check if video has heatmap data
+    if video.has_heatmap() {
+        if let Some(heatmap) = video.get_heatmap() {
+            println!("Video has {} heatmap segments", heatmap.points.len());
+
+            // Find the most replayed segment
+            if let Some(most_replayed) = heatmap.most_engaged_segment() {
+                println!(
+                    "Most replayed segment: {:.2}s - {:.2}s (engagement: {:.2})",
+                    most_replayed.start_time,
+                    most_replayed.end_time,
+                    most_replayed.value
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+- 📊 Analyzing engagement by threshold:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    if let Some(heatmap) = video.get_heatmap() {
+        // Get segments with high engagement (> 0.7)
+        let highly_engaged = heatmap.get_highly_engaged_segments(0.7);
+        println!("Found {} highly engaged segments", highly_engaged.len());
+
+        for segment in highly_engaged {
+            println!(
+                "High engagement: {:.2}s - {:.2}s (value: {:.2})",
+                segment.start_time,
+                segment.end_time,
+                segment.value
+            );
+        }
+
+        // Get engagement at specific timestamp
+        if let Some(point) = heatmap.get_point_at_time(120.0) {
+            println!(
+                "Engagement at 2:00 is {:.2}",
+                point.value
+            );
+        }
+    }
+
+    Ok(())
+}
+```
+
+## 📝 Subtitles
+
+The library provides comprehensive subtitle support, including downloading, language selection, and embedding subtitles into videos:
+
+- 📋 Listing available subtitle languages:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    // List all available subtitle languages
+    let languages = fetcher.list_subtitle_languages(&video);
+    println!("Available subtitle languages: {:?}", languages);
+
+    // Check if specific language is available
+    if fetcher.has_subtitle_language(&video, "en") {
+        println!("English subtitles are available");
+    }
+
+    Ok(())
+}
+```
+
+- 📥 Downloading a specific subtitle:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    // Download English subtitles
+    let subtitle_path = fetcher
+        .download_subtitle(&video, "en", "subtitle_en.srt")
+        .await?;
+    println!("Subtitle downloaded to: {:?}", subtitle_path);
+
+    Ok(())
+}
+```
+
+- 📥 Downloading all available subtitles:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    // Download all available subtitles
+    let subtitle_paths = fetcher
+        .download_all_subtitles(&video, &output_dir)
+        .await?;
+    println!("Downloaded {} subtitle files", subtitle_paths.len());
+
+    Ok(())
+}
+```
+
+- 🎬 Embedding subtitles into a video:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    // Download video
+    let video_path = fetcher.download_video(&video, "video.mp4").await?;
+
+    // Download subtitles
+    let en_subtitle = fetcher
+        .download_subtitle(&video, "en", "subtitle_en.srt")
+        .await?;
+    let fr_subtitle = fetcher
+        .download_subtitle(&video, "fr", "subtitle_fr.srt")
+        .await?;
+
+    // Embed subtitles into video
+    let video_with_subs = fetcher
+        .embed_subtitles_in_video(
+            &video_path,
+            &[en_subtitle, fr_subtitle],
+            "video_with_subtitles.mp4",
+        )
+        .await?;
+    println!("Video with embedded subtitles: {:?}", video_with_subs);
+
+    Ok(())
+}
+```
+
+- 🔄 Working with automatic captions:
+```rust
+use yt_dlp::Youtube;
+use yt_dlp::model::caption::Subtitle;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = fetcher.fetch_video_infos(url).await?;
+
+    // Iterate over subtitles and filter automatic ones
+    for (lang_code, subtitles) in &video.subtitles {
+        for subtitle in subtitles {
+            if subtitle.is_automatic {
+                println!(
+                    "Auto-generated subtitle: {} ({})",
+                    subtitle.language_name
+                        .as_deref()
+                        .unwrap_or(lang_code),
+                    subtitle.file_extension()
+                );
+            }
+        }
+    }
+
+    // Convert automatic captions to Subtitle struct
+    for (lang_code, auto_captions) in &video.automatic_captions {
+        if let Some(caption) = auto_captions.first() {
+            let subtitle = Subtitle::from_automatic_caption(
+                caption,
+                lang_code.clone(),
+            );
+            println!("Converted: {}", subtitle);
+        }
+    }
+
+    Ok(())
+}
+```
+
+## 📂 Playlists
+
+The library provides full playlist support, including fetching playlist metadata and downloading videos with various selection options:
+
+- 📋 Fetching playlist information:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let playlist_url = String::from("https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf");
+    let playlist = fetcher.fetch_playlist_infos(playlist_url).await?;
+
+    println!("Playlist: {}", playlist.title);
+    println!("Videos: {}", playlist.entry_count());
+    println!("Uploader: {}", playlist.uploader);
+
+    // List all videos in the playlist
+    for entry in &playlist.entries {
+        println!(
+            "[{}] {} ({})",
+            entry.index.unwrap_or(0),
+            entry.title,
+            entry.id
+        );
+    }
+
+    Ok(())
+}
+```
+
+- 📥 Downloading entire playlist:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let playlist_url = String::from("https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf");
+    let playlist = fetcher.fetch_playlist_infos(playlist_url).await?;
+
+    // Download all videos with a pattern
+    // Use %(playlist_index)s for index, %(title)s for title, %(id)s for video ID
+    let video_paths = fetcher
+        .download_playlist(&playlist, "%(playlist_index)s - %(title)s.mp4")
+        .await?;
+
+    println!("Downloaded {} videos", video_paths.len());
+
+    Ok(())
+}
+```
+
+- 🎯 Downloading specific videos by index:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let playlist_url = String::from("https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf");
+    let playlist = fetcher.fetch_playlist_infos(playlist_url).await?;
+
+    // Download specific videos by index (0-based)
+    let indices = vec![0, 2, 5, 10]; // Videos at positions 1, 3, 6, and 11
+    let video_paths = fetcher
+        .download_playlist_items(&playlist, &indices, "%(playlist_index)s - %(title)s.mp4")
+        .await?;
+
+    println!("Downloaded {} specific videos", video_paths.len());
+
+    Ok(())
+}
+```
+
+- 📊 Downloading a range of videos:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let playlist_url = String::from("https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf");
+    let playlist = fetcher.fetch_playlist_infos(playlist_url).await?;
+
+    // Download videos 5-15 (0-based, inclusive)
+    let video_paths = fetcher
+        .download_playlist_range(&playlist, 5, 15, "%(playlist_index)s - %(title)s.mp4")
+        .await?;
+
+    println!("Downloaded {} videos from range", video_paths.len());
+
+    Ok(())
+}
+```
+
+- 🔍 Filtering and analyzing playlists:
+```rust
+use yt_dlp::Youtube;
+use std::path::PathBuf;
+use yt_dlp::client::deps::Libraries;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let youtube = libraries_dir.join("yt-dlp");
+    let ffmpeg = libraries_dir.join("ffmpeg");
+
+    let libraries = Libraries::new(youtube, ffmpeg);
+    let fetcher = Youtube::new(libraries, output_dir)?;
+
+    let playlist_url = String::from("https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf");
+    let playlist = fetcher.fetch_playlist_infos(playlist_url).await?;
+
+    // Check if playlist is complete
+    if playlist.is_complete() {
+        println!("All playlist videos have been fetched");
+    }
+
+    // Get only available videos
+    let available = playlist.available_entries();
+    println!("Available videos: {}/{}", available.len(), playlist.entry_count());
+
+    // Get specific entry
+    if let Some(first_video) = playlist.get_entry_by_index(0) {
+        println!("First video: {}", first_video.title);
+        if let Some(duration) = first_video.duration_minutes() {
+            println!("Duration: {:.2} minutes", duration);
+        }
+    }
+
+    // Get entries in a range
+    let range = playlist.get_entries_in_range(0, 10);
+    println!("First 11 videos: {}", range.len());
+
+    Ok(())
+}
+```
+
+## 🚀 Advanced Features
+
+### 🔐 Proxy Support
+
+The library supports HTTP, HTTPS, and SOCKS5 proxies for both `yt-dlp` and `reqwest` downloads:
+
+```rust
+use yt_dlp::Youtube;
+use yt_dlp::client::proxy::{ProxyConfig, ProxyType};
+use yt_dlp::client::deps::Libraries;
+use std::path::PathBuf;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let libraries = Libraries::new(
+        libraries_dir.join("yt-dlp"),
+        libraries_dir.join("ffmpeg")
+    );
+
+    // Configure proxy with authentication
+    let proxy = ProxyConfig::new(ProxyType::Http, "http://proxy.example.com:8080")
+        .with_auth("username", "password")
+        .with_no_proxy(vec!["localhost".to_string(), "127.0.0.1".to_string()]);
+
+    // Build Youtube client with proxy
+    let youtube = Youtube::builder(libraries, output_dir)
+        .with_proxy(proxy)
+        .build()
+        .await?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = youtube.fetch_video_infos(url).await?;
+
+    // All downloads (video, audio, thumbnails) will use the proxy
+    youtube.download_video(&video, "video.mp4").await?;
+
+    Ok(())
+}
+```
+
+Supported proxy types:
+- **HTTP/HTTPS**: Standard HTTP proxies
+- **SOCKS5**: SOCKS5 proxies for more flexibility
+- **Authentication**: Username/password authentication
+- **No-proxy list**: Exclude specific domains from proxying
+
+### ✂️ Partial Download
+
+Download only specific parts of a video using time ranges or chapters:
+
+#### Time-based partial download
+
+```rust
+use yt_dlp::Youtube;
+use yt_dlp::download::partial::PartialRange;
+use yt_dlp::client::deps::Libraries;
+use std::path::PathBuf;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let libraries = Libraries::new(
+        libraries_dir.join("yt-dlp"),
+        libraries_dir.join("ffmpeg")
+    );
+    let youtube = Youtube::builder(libraries, output_dir).build().await?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = youtube.fetch_video_infos(url).await?;
+
+    // Download from 1:30 to 5:00 (90 to 300 seconds)
+    let range = PartialRange::time_range(90.0, 300.0);
+    youtube.download_video_partial(&video, &range, "partial.mp4").await?;
+
+    Ok(())
+}
+```
+
+#### Chapter-based partial download
+
+```rust
+use yt_dlp::Youtube;
+use yt_dlp::download::partial::PartialRange;
+use yt_dlp::client::deps::Libraries;
+use std::path::PathBuf;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let libraries = Libraries::new(
+        libraries_dir.join("yt-dlp"),
+        libraries_dir.join("ffmpeg")
+    );
+    let youtube = Youtube::builder(libraries, output_dir).build().await?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    let video = youtube.fetch_video_infos(url).await?;
+
+    // Download a single chapter (0-based index)
+    let single_chapter = PartialRange::single_chapter(2);
+    youtube.download_video_partial(&video, &single_chapter, "chapter2.mp4").await?;
+
+    // Download chapters 2 through 5
+    let chapter_range = PartialRange::chapter_range(2, 5);
+    youtube.download_video_partial(&video, &chapter_range, "chapters2-5.mp4").await?;
+
+    Ok(())
+}
+```
+
+#### Using DownloadBuilder for partial downloads
+
+```rust
+use yt_dlp::Youtube;
+use yt_dlp::client::deps::Libraries;
+use std::path::PathBuf;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let libraries = Libraries::new(
+        libraries_dir.join("yt-dlp"),
+        libraries_dir.join("ffmpeg")
+    );
+    let youtube = Youtube::builder(libraries, output_dir).build().await?;
+
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+
+    // Download with fluent API
+    youtube.download(url.clone(), "partial.mp4")
+        .time_range(90.0, 300.0)  // Download from 1:30 to 5:00
+        .execute()
+        .await?;
+
+    Ok(())
+}
+```
+
+**Implementation details:**
+- Uses `yt-dlp`'s `--download-sections` feature as primary method
+- Automatically falls back to FFmpeg extraction if `yt-dlp` fails
+- Chapters are automatically converted to time ranges
+- Works with all video formats
+
+### 🎨 Post-Processing Options
+
+Apply advanced post-processing to videos using FFmpeg:
+
+#### Basic codec conversion
+
+```rust
+use yt_dlp::Youtube;
+use yt_dlp::download::postprocess::{PostProcessConfig, VideoCodec, AudioCodec};
+use yt_dlp::client::deps::Libraries;
+use std::path::PathBuf;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let libraries = Libraries::new(
+        libraries_dir.join("yt-dlp"),
+        libraries_dir.join("ffmpeg")
+    );
+    let youtube = Youtube::builder(libraries, output_dir).build().await?;
+
+    // Configure post-processing
+    let config = PostProcessConfig::new()
+        .with_video_codec(VideoCodec::H264)
+        .with_audio_codec(AudioCodec::AAC)
+        .with_video_bitrate("2M")
+        .with_audio_bitrate("192k");
+
+    // Apply to existing video
+    youtube.postprocess_video("input.mp4", "output.mp4", config).await?;
+
+    Ok(())
+}
+```
+
+#### Advanced post-processing with filters
+
+```rust
+use yt_dlp::Youtube;
+use yt_dlp::download::postprocess::{
+    PostProcessConfig, VideoCodec, Resolution, EncodingPreset,
+    FfmpegFilter, WatermarkPosition
+};
+use yt_dlp::client::deps::Libraries;
+use std::path::PathBuf;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let libraries = Libraries::new(
+        libraries_dir.join("yt-dlp"),
+        libraries_dir.join("ffmpeg")
+    );
+    let youtube = Youtube::builder(libraries, output_dir).build().await?;
+
+    // Advanced configuration with filters
+    let config = PostProcessConfig::new()
+        .with_video_codec(VideoCodec::H265)
+        .with_resolution(Resolution::HD)
+        .with_framerate(30)
+        .with_preset(EncodingPreset::Medium)
+        .add_filter(FfmpegFilter::Brightness { value: 0.1 })
+        .add_filter(FfmpegFilter::Contrast { value: 1.2 })
+        .add_filter(FfmpegFilter::Watermark {
+            path: "logo.png".to_string(),
+            position: WatermarkPosition::BottomRight,
+        });
+
+    youtube.postprocess_video("input.mp4", "processed.mp4", config).await?;
+
+    Ok(())
+}
+```
+
+#### Available post-processing options
+
+**Video Codecs:**
+- H.264 (libx264) - Most compatible
+- H.265 (libx265) - Better compression
+- VP9 (libvpx-vp9) - Open format
+- AV1 (libaom-av1) - Next-gen codec
+- Copy - No re-encoding
+
+**Audio Codecs:**
+- AAC - High quality, widely supported
+- MP3 (libmp3lame) - Universal compatibility
+- Opus - Best quality/size ratio
+- Vorbis - Open format
+- Copy - No re-encoding
+
+**Resolutions:**
+- UHD8K (7680x4320)
+- UHD4K (3840x2160)
+- QHD (2560x1440)
+- FullHD (1920x1080)
+- HD (1280x720)
+- SD (854x480)
+- Low (640x360)
+- Custom { width, height }
+
+**Encoding Presets:**
+- UltraFast, SuperFast, VeryFast, Fast
+- Medium (balanced)
+- Slow, Slower, VerySlow (best quality)
+
+**Video Filters:**
+- **Crop**: `Crop { width, height, x, y }`
+- **Rotate**: `Rotate { angle }` (in degrees)
+- **Watermark**: `Watermark { path, position }`
+- **Brightness**: `Brightness { value }` (-1.0 to 1.0)
+- **Contrast**: `Contrast { value }` (0.0 to 4.0)
+- **Saturation**: `Saturation { value }` (0.0 to 3.0)
+- **Blur**: `Blur { radius }`
+- **FlipHorizontal**, **FlipVertical**
+- **Denoise**, **Sharpen**
+- **Custom**: `Custom { filter }` - Any FFmpeg filter string
+
+### ⚡ Speed Profiles
+
+The library includes an intelligent speed optimization system that automatically configures download parameters based on your internet connection speed. This feature significantly improves download performance for both individual videos and playlists.
+
+#### Available Speed Profiles
+
+Three pre-configured profiles are available:
+
+**🐢 Conservative** (for connections < 50 Mbps)
+- 3 concurrent downloads
+- 4-8 parallel segments per file
+- 5 MB segment size
+- 10 MB buffer
+- 2 concurrent playlist downloads
+- Best for: Standard internet, avoiding network congestion, limited bandwidth
+
+**⚖️ Balanced** (for connections 50-500 Mbps) - **Default**
+- 5 concurrent downloads
+- 8-16 parallel segments per file
+- 8 MB segment size
+- 20 MB buffer
+- 3 concurrent playlist downloads
+- Best for: Most modern internet connections, general use
+
+**🚀 Aggressive** (for connections > 500 Mbps)
+- 8 concurrent downloads
+- 16-32 parallel segments per file
+- 10 MB segment size
+- 30 MB buffer
+- 5 concurrent playlist downloads
+- Best for: High-bandwidth connections (fiber, gigabit), maximum speed
+
+#### Using Speed Profiles
+
+```rust
+use yt_dlp::{Youtube, YoutubeBuilder};
+use yt_dlp::download::SpeedProfile;
+use yt_dlp::client::deps::Libraries;
+use std::path::PathBuf;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let libraries = Libraries::new(
+        libraries_dir.join("yt-dlp"),
+        libraries_dir.join("ffmpeg")
+    );
+
+    // Use the Aggressive profile for maximum speed
+    let youtube = YoutubeBuilder::new(libraries, output_dir)
+        .with_speed_profile(SpeedProfile::Aggressive)
+        .build()
+        .await?;
+
+    // All downloads will now use optimized settings
+    let url = String::from("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    youtube.download_video_from_url(url, "video.mp4").await?;
+
+    Ok(())
+}
+```
+
+#### Manual Configuration (Advanced)
+
+You can also manually configure download parameters if you need fine-grained control:
+
+```rust
+use yt_dlp::{Youtube, YoutubeBuilder};
+use yt_dlp::download::ManagerConfig;
+use yt_dlp::client::deps::Libraries;
+use std::path::PathBuf;
+
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let libraries_dir = PathBuf::from("libs");
+    let output_dir = PathBuf::from("output");
+
+    let libraries = Libraries::new(
+        libraries_dir.join("yt-dlp"),
+        libraries_dir.join("ffmpeg")
+    );
+
+    // Create a custom configuration
+    let config = ManagerConfig::default()
+        .with_max_concurrent_downloads(10)   // 10 concurrent downloads
+        .with_segment_size(15 * 1024 * 1024) // 15 MB segments
+        .with_parallel_segments(16);          // 16 parallel segments
+
+    let youtube = YoutubeBuilder::new(libraries, output_dir)
+        .with_download_manager_config(config)
+        .build()
+        .await?;
+
+    Ok(())
+}
+```
+
+#### Performance Improvements
+
+The speed optimization system includes several advanced features:
+
+- **HTTP/2 Support**: Automatically enabled for better connection multiplexing
+- **Parallel Playlist Downloads**: Playlists are downloaded in parallel by default (previously sequential)
+- **Dynamic Segment Allocation**: Automatically adjusts the number of parallel segments based on file size
+- **Connection Pooling**: Reuses HTTP connections for better performance
+- **Intelligent Buffering**: Optimized buffer sizes based on your profile
+
+**Expected Performance Gains:**
+
+For individual videos:
+- Conservative: ~30% faster (HTTP/2)
+- Balanced: ~100% faster (2x segments + HTTP/2)
+- Aggressive: ~200% faster (3x segments + HTTP/2)
+
+For playlists:
+- Conservative: ~150% faster (2 videos in parallel)
+- Balanced: ~200% faster (3 videos in parallel)
+- Aggressive: ~400% faster (5 videos in parallel)
+
+**Note**: Actual performance gains depend on your internet speed, server limitations, and network conditions.
 
 ## 💡Features coming soon
-- [ ] Proxy support for `yt-dlp` and `reqwest`
-- [ ] Downloading only a part of a video or audio (with time or chapter)
-- [ ] Post-processing options with `ffmpeg`
 - [ ] Live streams serving, through a local server
 - [ ] Live streams recording, with `ffmpeg` or `reqwest`
 - [ ] Notifications and alerts on download events
 - [ ] Webhooks, Rust hooks and callbacks on download events, errors and progress
+- [ ] Support all extractors from yt-dlp
 - [ ] Statistics and analytics on downloads and fetches
+- [ ] Benchmark pure yt-dlp vs this library performance

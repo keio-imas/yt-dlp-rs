@@ -1,12 +1,16 @@
-//! Tools for fetching data from a URL.
+//! HTTP fetcher for downloading files with parallel segment support.
 //!
-//! This module is subdivided into several modules, each responsible for fetching a specific type of data.
-//! This module contains structs for fetching video data, dependencies binaries, or HTTP data.
-//!
-//! The `blocking` module contains blocking functions for fetching data from YouTube.
+//! This module provides the core HTTP fetching functionality with:
+//! - Parallel segment downloads
+//! - Connection pooling
+//! - Retry logic with exponential backoff
+//! - Progress tracking
 
+use crate::client::proxy::ProxyConfig;
+use crate::download::speed_profile::SpeedProfile;
 use crate::error::{Error, Result};
-use crate::utils::file_system;
+use crate::utils::fs;
+use crate::utils::retry::{RetryPolicy, is_http_error_retryable};
 use futures_util::{StreamExt, stream};
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, USER_AGENT};
 use std::cmp::min;
@@ -14,13 +18,9 @@ use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-
-pub mod deps;
-pub mod download_manager;
-pub mod streams;
-pub mod thumbnail;
 
 // Download configuration constants
 const DEFAULT_PARALLEL_SEGMENTS: usize = 4;
@@ -28,6 +28,11 @@ const DEFAULT_SEGMENT_SIZE: usize = 5 * 1024 * 1024; // 5 MB
 const DEFAULT_RETRY_ATTEMPTS: usize = 3;
 const SEGMENT_CHECK_BUFFER_SIZE: usize = 1024; // 1 KB buffer for checking empty segments
 const REQUEST_TIMEOUT_SECS: u64 = 60;
+
+// HTTP connection pool configuration
+const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 32;
+const HTTP_TCP_KEEPALIVE_SECS: u64 = 60;
 
 /// Context for segment download operations
 struct SegmentContext {
@@ -38,7 +43,8 @@ struct SegmentContext {
 }
 
 /// The fetcher is responsible for downloading data from a URL.
-/// This optimized implementation uses parallel downloads and download resumption.
+/// This optimized implementation uses parallel downloads, download resumption,
+/// and connection pooling for optimal performance.
 pub struct Fetcher {
     /// The URL from which to download the data.
     url: String,
@@ -49,9 +55,15 @@ pub struct Fetcher {
     segment_size: usize,
     /// The number of download attempts in case of failure.
     retry_attempts: usize,
+    /// Retry policy with exponential backoff for HTTP requests.
+    retry_policy: RetryPolicy,
+    /// Shared HTTP client with connection pooling for efficient request handling.
+    client: Arc<reqwest::Client>,
     /// Callback optional for tracking download progress
     #[allow(clippy::type_complexity)]
     progress_callback: Option<Arc<dyn Fn(u64, u64) + Send + Sync>>,
+    /// Speed profile for optimizing download parameters
+    speed_profile: SpeedProfile,
 }
 
 impl fmt::Display for Fetcher {
@@ -67,16 +79,45 @@ impl fmt::Display for Fetcher {
 impl Fetcher {
     /// Creates a new fetcher for the given URL.
     ///
+    /// The fetcher uses a shared HTTP client with connection pooling for optimal performance.
+    /// Connections are kept alive and reused across multiple requests.
+    ///
     /// # Arguments
     ///
     /// * `url` - The URL from which to download the data.
-    pub fn new(url: impl AsRef<str>) -> Self {
+    /// * `proxy` - Optional proxy configuration
+    pub fn new(url: impl AsRef<str>, proxy: Option<&ProxyConfig>) -> Self {
+        // Create a shared HTTP client with optimized connection pooling and HTTP/2 support
+        let mut builder = reqwest::Client::builder()
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .pool_idle_timeout(Duration::from_secs(HTTP_POOL_IDLE_TIMEOUT_SECS))
+            .pool_max_idle_per_host(HTTP_POOL_MAX_IDLE_PER_HOST)
+            .tcp_keepalive(Duration::from_secs(HTTP_TCP_KEEPALIVE_SECS))
+            .http2_adaptive_window(true)
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+
+        // Add proxy if configured
+        if let Some(proxy_config) = proxy
+            && let Ok(proxy) = proxy_config.to_reqwest_proxy()
+        {
+            builder = builder.proxy(proxy);
+        }
+
+        let client = builder.build().expect("Failed to build HTTP client");
+
         Self {
             url: url.as_ref().to_string(),
             parallel_segments: DEFAULT_PARALLEL_SEGMENTS,
             segment_size: DEFAULT_SEGMENT_SIZE,
             retry_attempts: DEFAULT_RETRY_ATTEMPTS,
+            retry_policy: RetryPolicy::default()
+                .with_max_attempts(DEFAULT_RETRY_ATTEMPTS as u32)
+                .with_initial_delay(Duration::from_millis(500))
+                .with_max_delay(Duration::from_secs(30))
+                .with_backoff_factor(2.0),
+            client: Arc::new(client),
             progress_callback: None,
+            speed_profile: SpeedProfile::default(),
         }
     }
 
@@ -120,6 +161,19 @@ impl Fetcher {
         F: Fn(u64, u64) + Send + Sync + 'static,
     {
         self.progress_callback = Some(Arc::new(callback));
+        self
+    }
+
+    /// Configure the speed profile for automatic optimization
+    ///
+    /// This will automatically adjust segment size and parallel segments
+    /// based on the profile settings during download.
+    ///
+    /// # Arguments
+    ///
+    /// * `profile` - The speed profile to use
+    pub fn with_speed_profile(mut self, profile: SpeedProfile) -> Self {
+        self.speed_profile = profile;
         self
     }
 
@@ -176,7 +230,7 @@ impl Fetcher {
         tracing::debug!("Fetching asset from {} to {:?}", self.url, destination);
 
         // Ensure the destination directory exists
-        file_system::create_parent_dir(&destination)?;
+        fs::create_parent_dir(&destination)?;
 
         // If the parent directory doesn't exist, create it
         if let Some(parent) = destination.as_ref().parent()
@@ -196,9 +250,17 @@ impl Fetcher {
             None
         };
 
-        // Check if the server supports range requests
-        let client = reqwest::Client::new();
-        let head_response = client.head(&self.url).send().await?;
+        // Check if the server supports range requests using retry logic
+        let url_clone = self.url.clone();
+        let client = Arc::clone(&self.client);
+
+        let head_response = self
+            .retry_policy
+            .execute_with_condition(
+                || async { client.head(&url_clone).send().await },
+                is_http_error_retryable,
+            )
+            .await?;
 
         // If the server does not support range requests, use the simple method
         if !head_response.headers().contains_key("accept-ranges") {
@@ -253,8 +315,8 @@ impl Fetcher {
             #[cfg(feature = "tracing")]
             tracing::debug!("Creating new file for download");
 
-            file_system::create_parent_dir(&destination)?;
-            let file = file_system::create_file(&destination).await?;
+            fs::create_parent_dir(&destination)?;
+            let file = fs::create_file(&destination).await?;
             // Resize the file to the total size
             file.set_len(content_length).await?;
             file
@@ -433,31 +495,10 @@ impl Fetcher {
         Ok(())
     }
 
-    /// Calculate the optimal number of parallel segments based on file size
+    /// Calculate the optimal number of parallel segments based on file size and speed profile
     fn calculate_optimal_segments(&self, file_size: u64) -> usize {
-        // Dynamic adjustment of the number of segments based on file size
-        // and segment size
-        let segment_size = self.segment_size as u64;
-
-        // Calculate the total number of segments needed
-        let total_segments = file_size.div_ceil(segment_size);
-
-        // Limit the number of segments based on file size
-        let file_size_mb = file_size / (1024 * 1024);
-
-        // Determine the maximum number of parallel segments based on file size
-        let max_parallel_segments = match file_size_mb {
-            size if size < 10 => 1,    // Less than 10 MB
-            size if size < 50 => 2,    // Less than 50 MB
-            size if size < 100 => 4,   // Less than 100 MB
-            size if size < 500 => 8,   // Less than 500 MB
-            size if size < 1000 => 12, // Less than 1 GB
-            size if size < 2000 => 16, // Less than 2 GB
-            _ => 24,                   // More than 2 GB
-        };
-
-        // Take the minimum between total segments and maximum parallel segments
-        std::cmp::min(total_segments as usize, max_parallel_segments)
+        self.speed_profile
+            .calculate_optimal_segments(file_size, self.segment_size as u64)
     }
 
     /// Downloads a specific segment of the file.
@@ -468,7 +509,7 @@ impl Fetcher {
         end: u64,
         context: &SegmentContext,
     ) -> Result<()> {
-        let client = reqwest::Client::new();
+        let client = Arc::clone(&self.client);
 
         // Check if the segment is already downloaded by reading the file
         let mut file_guard = context.file.lock().await;
@@ -497,30 +538,44 @@ impl Fetcher {
         // Create the Range header
         let range_header = format!("bytes={}-{}", start, end);
 
-        // Make the request with the Range header
-        let response = client
-            .get(url)
-            .header(RANGE, range_header)
-            .send()
-            .await?
-            .error_for_status()?;
+        // Make the request with the Range header using retry logic
+        let url_clone = url.to_string();
+        let range_clone = range_header.clone();
 
-        // Read the data
-        let data = response.bytes().await?;
+        let data = self
+            .retry_policy
+            .execute_with_condition(
+                || async {
+                    let response = client
+                        .get(&url_clone)
+                        .header(RANGE, &range_clone)
+                        .send()
+                        .await?
+                        .error_for_status()?;
 
-        // Acquire the mutex and write the data at the correct position
-        let mut file_guard = context.file.lock().await;
-        file_guard.seek(std::io::SeekFrom::Start(start)).await?;
-        file_guard.write_all(&data).await?;
+                    // Read the data
+                    response.bytes().await
+                },
+                is_http_error_retryable,
+            )
+            .await?;
 
-        // Update the progress counter
+        // Acquire the mutex ONLY for seek+write+flush (minimal lock duration)
+        {
+            let mut file_guard = context.file.lock().await;
+            file_guard.seek(std::io::SeekFrom::Start(start)).await?;
+            file_guard.write_all(&data).await?;
+            file_guard.flush().await?;
+        } // Lock released here - critical section is minimal
+
+        // Update the progress counter WITHOUT holding the file lock
         let segment_size = data.len() as u64;
         let new_total = context
             .downloaded_bytes
             .fetch_add(segment_size, Ordering::SeqCst)
             + segment_size;
 
-        // Call the progress callback if available
+        // Call the progress callback if available (no lock needed)
         if let Some(callback) = &context.progress_callback {
             callback(new_total, context.total_bytes);
         }
@@ -534,7 +589,7 @@ impl Fetcher {
         tracing::debug!("Using simple download for {}", self.url);
 
         // Ensure the destination directory exists
-        file_system::create_parent_dir(&destination)?;
+        fs::create_parent_dir(&destination)?;
 
         // If the parent directory doesn't exist, create it
         if let Some(parent) = destination.as_ref().parent()
@@ -554,29 +609,26 @@ impl Fetcher {
             None
         };
 
-        // Create a client with a longer timeout
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
-            .build()?;
+        // Use the shared client for the request with retry logic
+        let url_clone = self.url.clone();
+        let range_header = file_size
+            .filter(|&s| s > 0)
+            .map(|s| format!("bytes={}-", s));
+        let client = Arc::clone(&self.client);
 
-        // If the file exists, try to resume the download
-        let mut request = client.get(&self.url);
-
-        // Add Range header if the file exists and has some content
-        if let Some(size) = file_size
-            && size > 0
-        {
-            #[cfg(feature = "tracing")]
-            tracing::debug!("Resuming download from byte {}", size);
-
-            request = request.header(RANGE, format!("bytes={}-", size));
-        }
-
-        // Add User-Agent header
-        request = request.header(USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-
-        // Send the request
-        let response = request.send().await?;
+        let response = self
+            .retry_policy
+            .execute_with_condition(
+                || async {
+                    let mut req = client.get(&url_clone);
+                    if let Some(ref range) = range_header {
+                        req = req.header(RANGE, range);
+                    }
+                    req.send().await
+                },
+                is_http_error_retryable,
+            )
+            .await?;
 
         // Check if the server accepted our range request
         let status = response.status();
@@ -609,7 +661,7 @@ impl Fetcher {
                 .open(&destination)
                 .await?
         } else {
-            file_system::create_file(&destination).await?
+            fs::create_file(&destination).await?
         };
 
         let mut stream = response.bytes_stream();
